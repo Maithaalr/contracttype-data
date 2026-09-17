@@ -1216,7 +1216,89 @@ if not entity_counts.empty:
             hide_index=True
         )
 
+# =========================================================
+# تحليل بدل طبيعة العمل حسب الدائرة
+# =========================================================
 
+if nature_allowance_col and entity_col:
+
+    # فقط الموظفين الذين يستلمون بدل طبيعة عمل
+    # أي قيمة 0 أو Blank يتم تجاهلها
+    nature_analysis_df = filtered_df[
+        filtered_df[nature_allowance_col] > 0
+    ].copy()
+
+    if not nature_analysis_df.empty:
+
+        # إجمالي عدد المستلمين
+        nature_employee_count = len(nature_analysis_df)
+
+        # إجمالي تكلفة بدل طبيعة العمل
+        nature_total_cost = (
+            nature_analysis_df[
+                nature_allowance_col
+            ].sum()
+        )
+
+        # التجميع حسب الدائرة
+        nature_entity_df = (
+            nature_analysis_df
+            .groupby(entity_col)
+            .agg(
+                عدد_الموظفين=(
+                    nature_allowance_col,
+                    "count"
+                ),
+                إجمالي_التكلفة=(
+                    nature_allowance_col,
+                    "sum"
+                )
+            )
+            .reset_index()
+            .sort_values(
+                "إجمالي_التكلفة",
+                ascending=False
+            )
+        )
+
+        # تغيير اسم عمود الدائرة للعرض
+        nature_entity_df = nature_entity_df.rename(
+            columns={
+                entity_col: "الدائرة / الجهة"
+            }
+        )
+
+        # العنوان
+        st.markdown(
+            '<div class="section-title">'
+            'تحليل بدل طبيعة العمل'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
+        # بطاقات الإجمالي
+        nature_col1, nature_col2 = st.columns(2)
+
+        with nature_col1:
+
+            st.metric(
+                "عدد الموظفين المستلمين لبدل طبيعة العمل",
+                f"{nature_employee_count:,}"
+            )
+
+        with nature_col2:
+
+            st.metric(
+                "إجمالي تكلفة بدل طبيعة العمل",
+                f"{format_money(nature_total_cost)} د.إ"
+            )
+
+        # جدول حسب الدائرة
+        st.dataframe(
+            nature_entity_df,
+            use_container_width=True,
+            hide_index=True
+        )
 # =========================================================
 # بيانات العقود
 # =========================================================
