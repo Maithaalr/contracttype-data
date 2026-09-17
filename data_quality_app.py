@@ -3,27 +3,32 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 
+
 # =========================================================
 # إعداد الصفحة
 # =========================================================
+
 st.set_page_config(
     page_title="نظام تحليل العقود",
     page_icon="📊",
     layout="wide"
 )
 
+
 # =========================================================
-# CSS
+# تنسيق الصفحة RTL
 # =========================================================
+
 st.markdown("""
 <style>
-    .main {
-        direction: rtl;
-    }
 
     html, body, [class*="css"] {
         direction: rtl;
         text-align: right;
+    }
+
+    .main {
+        direction: rtl;
     }
 
     .block-container {
@@ -65,6 +70,7 @@ st.markdown("""
         margin-top: 25px;
         margin-bottom: 15px;
     }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,12 +81,14 @@ st.markdown("""
 
 def clean_column_names(df):
     """تنظيف أسماء الأعمدة"""
+
     df.columns = (
         df.columns
         .astype(str)
         .str.strip()
         .str.replace("\n", " ", regex=False)
     )
+
     return df
 
 
@@ -88,13 +96,16 @@ def find_column(df, possible_names):
     """
     البحث عن العمود حتى لو كان اسمه مختلفاً بشكل بسيط
     """
+
     normalized = {
         str(col).strip().replace(" ", ""): col
         for col in df.columns
     }
 
     for name in possible_names:
+
         key = name.strip().replace(" ", "")
+
         if key in normalized:
             return normalized[key]
 
@@ -103,7 +114,9 @@ def find_column(df, possible_names):
 
 def convert_numeric(df, column):
     """تحويل العمود إلى أرقام"""
+
     if column and column in df.columns:
+
         df[column] = (
             df[column]
             .astype(str)
@@ -123,11 +136,17 @@ def convert_numeric(df, column):
 
 def format_money(value):
     """تنسيق المبالغ"""
+
     try:
         return f"{value:,.2f}"
+
     except:
         return "0.00"
 
+
+# =========================================================
+# إنشاء ملف Excel
+# =========================================================
 
 def create_excel(
     filtered_df,
@@ -139,7 +158,8 @@ def create_excel(
     total_nature,
     top_entity,
     top_category,
-    category_counts
+    category_counts,
+    entity_counts
 ):
 
     output = BytesIO()
@@ -149,20 +169,23 @@ def create_excel(
         engine="openpyxl"
     ) as writer:
 
-        # -----------------------------------------
+        # =================================================
         # Sheet 1: العقود
-        # -----------------------------------------
+        # =================================================
+
         filtered_df.to_excel(
             writer,
             sheet_name="العقود",
             index=False
         )
 
-        # -----------------------------------------
-        # Sheet 2: الإحصائيات
-        # -----------------------------------------
+
+        # =================================================
+        # Sheet 2: الإحصائيات الرئيسية
+        # =================================================
 
         summary = pd.DataFrame({
+
             "المؤشر": [
                 "نوع العقد",
                 "إجمالي عدد العقود",
@@ -173,6 +196,7 @@ def create_excel(
                 "إجمالي بدل طبيعة العمل",
                 "إجمالي التكلفة الشهرية"
             ],
+
             "القيمة": [
                 contract_type,
                 total_contracts,
@@ -183,7 +207,9 @@ def create_excel(
                 total_nature,
                 total_cost
             ]
+
         })
+
 
         summary.to_excel(
             writer,
@@ -192,61 +218,244 @@ def create_excel(
             startrow=0
         )
 
-        # توزيع الفئات
+
+        # =================================================
+        # توزيع العقود حسب الفئة الوظيفية
+        # =================================================
+
+        category_start_row = len(summary) + 3
+
         if not category_counts.empty:
 
             category_export = category_counts.reset_index()
+
             category_export.columns = [
                 "الفئة الوظيفية",
                 "عدد العقود"
             ]
 
+            # إضافة الإجمالي
+            category_total = pd.DataFrame({
+                "الفئة الوظيفية": ["الإجمالي"],
+                "عدد العقود": [
+                    category_export["عدد العقود"].sum()
+                ]
+            })
+
+            category_export = pd.concat(
+                [
+                    category_export,
+                    category_total
+                ],
+                ignore_index=True
+            )
+
             category_export.to_excel(
                 writer,
                 sheet_name="الإحصائيات",
                 index=False,
-                startrow=len(summary) + 3
+                startrow=category_start_row
             )
 
-        # -----------------------------------------
-        # تنسيق Excel
-        # -----------------------------------------
+
+        # =================================================
+        # عدد الموظفين حسب الدائرة
+        # =================================================
+
+        entity_start_row = (
+            category_start_row
+            + len(category_counts)
+            + 5
+        )
+
+        if not entity_counts.empty:
+
+            entity_export = entity_counts.reset_index()
+
+            entity_export.columns = [
+                "الدائرة / الجهة",
+                "عدد الموظفين"
+            ]
+
+            # إضافة الإجمالي
+            entity_total = pd.DataFrame({
+
+                "الدائرة / الجهة": [
+                    "الإجمالي"
+                ],
+
+                "عدد الموظفين": [
+                    entity_export[
+                        "عدد الموظفين"
+                    ].sum()
+                ]
+
+            })
+
+            entity_export = pd.concat(
+                [
+                    entity_export,
+                    entity_total
+                ],
+                ignore_index=True
+            )
+
+            entity_export.to_excel(
+                writer,
+                sheet_name="الإحصائيات",
+                index=False,
+                startrow=entity_start_row
+            )
+
+
+        # =================================================
+        # تنسيق ملف Excel
+        # =================================================
 
         workbook = writer.book
+
+        from openpyxl.styles import (
+            Font,
+            PatternFill,
+            Alignment,
+            Border,
+            Side
+        )
+
+
+        # لون العناوين
+        header_fill = PatternFill(
+            fill_type="solid",
+            fgColor="D9EAF7"
+        )
+
+        header_font = Font(
+            bold=True
+        )
+
+        total_fill = PatternFill(
+            fill_type="solid",
+            fgColor="E2F0D9"
+        )
+
+        thin_border = Border(
+            left=Side(
+                style="thin",
+                color="D9D9D9"
+            ),
+            right=Side(
+                style="thin",
+                color="D9D9D9"
+            ),
+            top=Side(
+                style="thin",
+                color="D9D9D9"
+            ),
+            bottom=Side(
+                style="thin",
+                color="D9D9D9"
+            )
+        )
+
 
         for sheet_name in workbook.sheetnames:
 
             worksheet = workbook[sheet_name]
 
+            # RTL
             worksheet.sheet_view.rightToLeft = True
 
+            # تثبيت الصف
+            worksheet.freeze_panes = "A2"
+
+
+            # ---------------------------------------------
+            # تنسيق الخلايا
+            # ---------------------------------------------
+
+            for row in worksheet.iter_rows():
+
+                for cell in row:
+
+                    cell.alignment = Alignment(
+                        horizontal="right",
+                        vertical="center"
+                    )
+
+                    if cell.value is not None:
+
+                        cell.border = thin_border
+
+
+            # ---------------------------------------------
+            # تنسيق الصف الأول
+            # ---------------------------------------------
+
+            for cell in worksheet[1]:
+
+                cell.fill = header_fill
+                cell.font = header_font
+
+
+            # ---------------------------------------------
+            # البحث عن أي صف يحتوي على الإجمالي
+            # ---------------------------------------------
+
+            for row in worksheet.iter_rows():
+
+                if any(
+                    cell.value == "الإجمالي"
+                    for cell in row
+                ):
+
+                    for cell in row:
+
+                        cell.fill = total_fill
+                        cell.font = Font(
+                            bold=True
+                        )
+
+
+            # ---------------------------------------------
             # عرض الأعمدة
+            # ---------------------------------------------
+
             for column_cells in worksheet.columns:
 
                 max_length = 0
 
-                column_letter = column_cells[0].column_letter
+                column_letter = (
+                    column_cells[0]
+                    .column_letter
+                )
 
                 for cell in column_cells:
 
                     try:
+
                         if cell.value is not None:
-                            length = len(str(cell.value))
+
+                            length = len(
+                                str(cell.value)
+                            )
 
                             if length > max_length:
+
                                 max_length = length
 
                     except:
                         pass
 
-                adjusted_width = min(max_length + 4, 40)
+
+                adjusted_width = min(
+                    max_length + 5,
+                    45
+                )
 
                 worksheet.column_dimensions[
                     column_letter
                 ].width = adjusted_width
 
-            # تثبيت الصف الأول
-            worksheet.freeze_panes = "A2"
 
     output.seek(0)
 
@@ -254,11 +463,13 @@ def create_excel(
 
 
 # =========================================================
-# العنوان
+# عنوان النظام
 # =========================================================
 
 st.markdown(
-    '<div class="main-title">نظام تحليل العقود</div>',
+    '<div class="main-title">'
+    'نظام تحليل العقود'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -290,16 +501,21 @@ if uploaded_file is None:
 
 
 # =========================================================
-# قراءة الملف
+# قراءة ملف Excel
 # =========================================================
 
 try:
 
-    excel_file = pd.ExcelFile(uploaded_file)
+    excel_file = pd.ExcelFile(
+        uploaded_file
+    )
 
-    sheet_names = excel_file.sheet_names
+    sheet_names = (
+        excel_file.sheet_names
+    )
 
-    # إذا كان هناك أكثر من Sheet
+
+    # إذا كان الملف يحتوي على أكثر من Sheet
     if len(sheet_names) > 1:
 
         selected_sheet = st.selectbox(
@@ -309,12 +525,16 @@ try:
 
     else:
 
-        selected_sheet = sheet_names[0]
+        selected_sheet = (
+            sheet_names[0]
+        )
+
 
     df = pd.read_excel(
         uploaded_file,
         sheet_name=selected_sheet
     )
+
 
 except Exception as e:
 
@@ -332,11 +552,13 @@ except Exception as e:
 df = clean_column_names(df)
 
 # حذف الصفوف الفارغة بالكامل
-df = df.dropna(how="all")
+df = df.dropna(
+    how="all"
+)
 
 
 # =========================================================
-# اكتشاف الأعمدة
+# اكتشاف الأعمدة تلقائياً
 # =========================================================
 
 contract_type_col = find_column(
@@ -349,6 +571,7 @@ contract_type_col = find_column(
     ]
 )
 
+
 entity_col = find_column(
     df,
     [
@@ -356,9 +579,12 @@ entity_col = find_column(
         "الدائرة",
         "الجهة الحكومية",
         "اسم الجهة",
+        "اسم الدائرة",
+        "الدائرة الحكومية",
         "Entity"
     ]
 )
+
 
 category_col = find_column(
     df,
@@ -368,6 +594,7 @@ category_col = find_column(
         "Job Category"
     ]
 )
+
 
 basic_salary_col = find_column(
     df,
@@ -379,6 +606,7 @@ basic_salary_col = find_column(
     ]
 )
 
+
 supplementary_col = find_column(
     df,
     [
@@ -387,6 +615,7 @@ supplementary_col = find_column(
         "Supplementary"
     ]
 )
+
 
 nature_allowance_col = find_column(
     df,
@@ -397,11 +626,13 @@ nature_allowance_col = find_column(
     ]
 )
 
+
 monthly_cost_col = find_column(
     df,
     [
         "التكلفة الشهرية",
         "إجمالي التكلفة الشهرية",
+        "اجمالي التكلفة الشهرية",
         "التكلفة",
         "Monthly Cost"
     ]
@@ -418,23 +649,24 @@ if contract_type_col is None:
         """
         لم أجد عمود **نوع العقد** في الملف.
 
-        يجب أن يحتوي ملف البيانات الرئيسي على عمود باسم:
+        يجب أن يحتوي ملف البيانات على عمود باسم:
         **نوع العقد**
-
-        مثال:
-        عقد خاص / عقد مؤقت / عقد خبير / عقد مستشار
         """
     )
 
-    st.write("الأعمدة الموجودة في الملف:")
+    st.write(
+        "الأعمدة الموجودة في الملف:"
+    )
 
-    st.write(list(df.columns))
+    st.write(
+        list(df.columns)
+    )
 
     st.stop()
 
 
 # =========================================================
-# تنظيف نوع العقد
+# تنظيف عمود نوع العقد
 # =========================================================
 
 df[contract_type_col] = (
@@ -443,15 +675,20 @@ df[contract_type_col] = (
     .str.strip()
 )
 
+
 df = df[
     ~df[contract_type_col].isin(
-        ["", "nan", "None"]
+        [
+            "",
+            "nan",
+            "None"
+        ]
     )
 ]
 
 
 # =========================================================
-# تحويل الأعمدة المالية
+# تحويل الأعمدة المالية إلى أرقام
 # =========================================================
 
 for col in [
@@ -461,7 +698,10 @@ for col in [
     monthly_cost_col
 ]:
 
-    df = convert_numeric(df, col)
+    df = convert_numeric(
+        df,
+        col
+    )
 
 
 # =========================================================
@@ -469,16 +709,22 @@ for col in [
 # =========================================================
 
 st.markdown(
-    '<div class="section-title">اختيار نوع العقد</div>',
+    '<div class="section-title">'
+    'اختيار نوع العقد'
+    '</div>',
     unsafe_allow_html=True
 )
 
+
 contract_types = sorted(
-    df[contract_type_col]
+    df[
+        contract_type_col
+    ]
     .dropna()
     .unique()
     .tolist()
 )
+
 
 selected_contract = st.selectbox(
     "نوع العقد",
@@ -487,11 +733,12 @@ selected_contract = st.selectbox(
 
 
 # =========================================================
-# الفلترة الأساسية
+# فلترة البيانات حسب نوع العقد
 # =========================================================
 
 filtered_df = df[
-    df[contract_type_col] == selected_contract
+    df[contract_type_col]
+    == selected_contract
 ].copy()
 
 
@@ -502,66 +749,99 @@ filtered_df = df[
 if monthly_cost_col is None:
 
     available_salary_columns = [
+
         col
+
         for col in [
             basic_salary_col,
             supplementary_col,
             nature_allowance_col
         ]
+
         if col is not None
     ]
 
+
     if available_salary_columns:
 
-        filtered_df["التكلفة الشهرية المحسوبة"] = (
+        filtered_df[
+            "التكلفة الشهرية المحسوبة"
+        ] = (
+
             filtered_df[
                 available_salary_columns
-            ].sum(axis=1)
+            ]
+            .sum(axis=1)
+
         )
 
-        monthly_cost_col = "التكلفة الشهرية المحسوبة"
+        monthly_cost_col = (
+            "التكلفة الشهرية المحسوبة"
+        )
 
 
 # =========================================================
-# الإحصائيات
+# الإحصائيات الرئيسية
 # =========================================================
 
-total_contracts = len(filtered_df)
+total_contracts = len(
+    filtered_df
+)
 
 
 # الراتب الأساسي
 if basic_salary_col:
-    total_basic = filtered_df[
-        basic_salary_col
-    ].sum()
+
+    total_basic = (
+        filtered_df[
+            basic_salary_col
+        ].sum()
+    )
+
 else:
+
     total_basic = 0
 
 
 # التكميلي
 if supplementary_col:
-    total_supplementary = filtered_df[
-        supplementary_col
-    ].sum()
+
+    total_supplementary = (
+        filtered_df[
+            supplementary_col
+        ].sum()
+    )
+
 else:
+
     total_supplementary = 0
 
 
 # بدل طبيعة العمل
 if nature_allowance_col:
-    total_nature = filtered_df[
-        nature_allowance_col
-    ].sum()
+
+    total_nature = (
+        filtered_df[
+            nature_allowance_col
+        ].sum()
+    )
+
 else:
+
     total_nature = 0
 
 
 # التكلفة الشهرية
 if monthly_cost_col:
-    total_cost = filtered_df[
-        monthly_cost_col
-    ].sum()
+
+    total_cost = (
+        filtered_df[
+            monthly_cost_col
+        ].sum()
+    )
+
 else:
+
     total_cost = (
         total_basic
         + total_supplementary
@@ -570,14 +850,24 @@ else:
 
 
 # =========================================================
-# أكثر جهة
+# أكثر جهة / دائرة
 # =========================================================
 
 if entity_col and not filtered_df.empty:
 
-    entity_data = filtered_df[
-        entity_col
-    ].dropna()
+    entity_data = (
+        filtered_df[
+            entity_col
+        ]
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
+
+    entity_data = entity_data[
+        entity_data != ""
+    ]
+
 
     if not entity_data.empty:
 
@@ -597,14 +887,55 @@ else:
 
 
 # =========================================================
+# عدد الموظفين حسب كل دائرة
+# =========================================================
+
+if entity_col and not filtered_df.empty:
+
+    entity_counts = (
+        filtered_df[
+            entity_col
+        ]
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
+
+    entity_counts = entity_counts[
+        entity_counts != ""
+    ]
+
+    entity_counts = (
+        entity_counts
+        .value_counts()
+    )
+
+else:
+
+    entity_counts = (
+        pd.Series(dtype=int)
+    )
+
+
+# =========================================================
 # أكثر فئة وظيفية
 # =========================================================
 
 if category_col and not filtered_df.empty:
 
-    category_data = filtered_df[
-        category_col
-    ].dropna()
+    category_data = (
+        filtered_df[
+            category_col
+        ]
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
+
+    category_data = category_data[
+        category_data != ""
+    ]
+
 
     if not category_data.empty:
 
@@ -613,19 +944,30 @@ if category_col and not filtered_df.empty:
             .value_counts()
         )
 
-        top_category = category_counts.idxmax()
+        top_category = (
+            category_counts
+            .idxmax()
+        )
 
     else:
 
-        category_counts = pd.Series(dtype=int)
+        category_counts = (
+            pd.Series(dtype=int)
+        )
 
-        top_category = "غير متوفر"
+        top_category = (
+            "غير متوفر"
+        )
 
 else:
 
-    category_counts = pd.Series(dtype=int)
+    category_counts = (
+        pd.Series(dtype=int)
+    )
 
-    top_category = "غير متوفر"
+    top_category = (
+        "غير متوفر"
+    )
 
 
 # =========================================================
@@ -633,6 +975,7 @@ else:
 # =========================================================
 
 st.markdown("---")
+
 
 st.markdown(
     f'<div class="section-title">'
@@ -642,8 +985,12 @@ st.markdown(
 )
 
 
-# الصف الأول
+# =========================================================
+# بطاقات الإحصائيات
+# =========================================================
+
 col1, col2, col3, col4 = st.columns(4)
+
 
 with col1:
 
@@ -652,6 +999,7 @@ with col1:
         f"{total_contracts:,}"
     )
 
+
 with col2:
 
     st.metric(
@@ -659,12 +1007,14 @@ with col2:
         f"{format_money(total_cost)} د.إ"
     )
 
+
 with col3:
 
     st.metric(
         "أكثر جهة",
         top_entity
     )
+
 
 with col4:
 
@@ -685,7 +1035,11 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-cost1, cost2, cost3 = st.columns(3)
+
+cost1, cost2, cost3 = (
+    st.columns(3)
+)
+
 
 with cost1:
 
@@ -694,12 +1048,14 @@ with cost1:
         f"{format_money(total_basic)} د.إ"
     )
 
+
 with cost2:
 
     st.metric(
         "إجمالي التكميلي",
         f"{format_money(total_supplementary)} د.إ"
     )
+
 
 with cost3:
 
@@ -710,7 +1066,7 @@ with cost3:
 
 
 # =========================================================
-# توزيع الفئات الوظيفية
+# توزيع العقود حسب الفئة الوظيفية
 # =========================================================
 
 if not category_counts.empty:
@@ -722,19 +1078,52 @@ if not category_counts.empty:
         unsafe_allow_html=True
     )
 
+
     category_df = (
         category_counts
         .reset_index()
     )
+
 
     category_df.columns = [
         "الفئة الوظيفية",
         "عدد العقود"
     ]
 
-    chart_col, table_col = st.columns([2, 1])
 
-    with chart_col:
+    # إضافة الإجمالي للجدول
+    category_total = pd.DataFrame({
+
+        "الفئة الوظيفية": [
+            "الإجمالي"
+        ],
+
+        "عدد العقود": [
+            category_df[
+                "عدد العقود"
+            ].sum()
+        ]
+
+    })
+
+
+    category_df_display = (
+        pd.concat(
+            [
+                category_df,
+                category_total
+            ],
+            ignore_index=True
+        )
+    )
+
+
+    category_chart_col, category_table_col = (
+        st.columns([2, 1])
+    )
+
+
+    with category_chart_col:
 
         st.bar_chart(
             category_df.set_index(
@@ -742,10 +1131,87 @@ if not category_counts.empty:
             )
         )
 
-    with table_col:
+
+    with category_table_col:
 
         st.dataframe(
-            category_df,
+            category_df_display,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# =========================================================
+# عدد الموظفين حسب الدائرة
+# =========================================================
+
+if not entity_counts.empty:
+
+    st.markdown(
+        '<div class="section-title">'
+        'عدد الموظفين حسب الدائرة'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+
+    entity_df = (
+        entity_counts
+        .reset_index()
+    )
+
+
+    entity_df.columns = [
+        "الدائرة / الجهة",
+        "عدد الموظفين"
+    ]
+
+
+    # إضافة الإجمالي
+    entity_total = pd.DataFrame({
+
+        "الدائرة / الجهة": [
+            "الإجمالي"
+        ],
+
+        "عدد الموظفين": [
+            entity_df[
+                "عدد الموظفين"
+            ].sum()
+        ]
+
+    })
+
+
+    entity_df_display = (
+        pd.concat(
+            [
+                entity_df,
+                entity_total
+            ],
+            ignore_index=True
+        )
+    )
+
+
+    entity_chart_col, entity_table_col = (
+        st.columns([2, 1])
+    )
+
+
+    with entity_chart_col:
+
+        st.bar_chart(
+            entity_df.set_index(
+                "الدائرة / الجهة"
+            )
+        )
+
+
+    with entity_table_col:
+
+        st.dataframe(
+            entity_df_display,
             use_container_width=True,
             hide_index=True
         )
@@ -762,9 +1228,14 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
 st.caption(
-    f"يتم عرض {len(filtered_df):,} سجل من نوع «{selected_contract}»"
+    f"""
+    يتم عرض {len(filtered_df):,}
+    سجل من نوع «{selected_contract}»
+    """
 )
+
 
 st.dataframe(
     filtered_df,
@@ -774,32 +1245,59 @@ st.dataframe(
 
 
 # =========================================================
-# تصدير Excel
+# إنشاء Excel
 # =========================================================
 
 st.markdown("---")
 
+
 excel_file = create_excel(
+
     filtered_df=filtered_df,
+
     contract_type=selected_contract,
+
     total_contracts=total_contracts,
+
     total_cost=total_cost,
+
     total_basic=total_basic,
+
     total_supplementary=total_supplementary,
+
     total_nature=total_nature,
+
     top_entity=top_entity,
+
     top_category=top_category,
-    category_counts=category_counts
+
+    category_counts=category_counts,
+
+    entity_counts=entity_counts
+
 )
 
 
+# =========================================================
+# تحميل Excel
+# =========================================================
+
 st.download_button(
+
     label="⬇️ تحميل تقرير Excel",
+
     data=excel_file,
-    file_name=f"تقرير_{selected_contract}.xlsx",
+
+    file_name=(
+        f"تقرير_{selected_contract}.xlsx"
+    ),
+
     mime=(
-        "application/vnd.openxmlformats-officedocument."
+        "application/"
+        "vnd.openxmlformats-officedocument."
         "spreadsheetml.sheet"
     ),
+
     use_container_width=True
+
 )
